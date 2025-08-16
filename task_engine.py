@@ -2,84 +2,36 @@ import subprocess
 import sys
 import traceback
 from typing import List
-import datetime
-import os
-import black
-import itertools
-import tempfile
-import textwrap
 
+async def run_python_code(code: str, libraries: List[str], folder: str = "uploads") -> dict:
+    import os
+    import io
 
-async def run_python_code(code: str, libraries: List[str], folder: str = "uploads", python_exec = sys.executable) -> dict:
+    def execute_code():
+        # Ensure working directory is the request folder
+        #os.makedirs(folder, exist_ok=True)
+        #old_cwd = os.getcwd()
+        #os.chdir(folder)
+        #try:
+        #    exec_globals = {}
+        #    exec(code, exec_globals)
+        #finally:
+        #    os.chdir(old_cwd)
 
-    # Create a unique work directory per run
-    work_dir = os.path.join(folder, f"job_")
-    os.makedirs(work_dir, exist_ok=True)
+        exec_globals = {}
+        exec(code, exec_globals)
 
-    # Ensure the folder exists
-    os.makedirs(folder, exist_ok=True)
-
-    # File where we’ll log execution results
-    log_file_path = os.path.join(folder, "execution_result.txt")
-
-    def log_to_file(content: str):
-        """Append timestamped content to the log file."""
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(log_file_path, "a", encoding="utf-8") as log_file:
-            log_file.write(f"\n[{timestamp}]\n{content}\n{'-'*40}\n")
-
-    # Step 1: Check & install required libraries in the selected venv
+    # Step 1: Install all required libraries first
     for lib in libraries:
         try:
-            # check if already installed
-            check_cmd = [
-                python_exec,
-                "-c",
-                f"import importlib.util, sys; "
-                f"sys.exit(0) if importlib.util.find_spec('{lib}') else sys.exit(1)"
-            ]
-            result = subprocess.run(check_cmd)
-            if result.returncode != 0:  # not installed
-                log_to_file(f"📦 Installing {lib} ...")
-                subprocess.check_call([python_exec, "-m", "pip", "install", lib])
-            else:
-                log_to_file(f"✅ {lib} already installed.")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
         except Exception as install_error:
-            error_message = f"❌ Failed to install library '{lib}':\n{install_error}"
-            log_to_file(error_message)
-            return {"code": 0, "output": error_message}
+            return {"code": 0, "output":f"❌ Failed to install library '{lib}':\n{install_error}"}
 
-    # Step 2: Run the code in the isolated venv
+    # Step 2: Execute the code after installation
     try:
-        try:
-            code_formatted = black.format_str(code, mode=black.Mode())
-        except Exception:
-            code_formatted = code  # fallback if formatting fails
-
-        log_to_file(f"📜 Executing Code:\n{code_formatted}")
-
-        # Save code to job-specific file
-        code_file_path = os.path.join(work_dir, "script.py")
-        with open(code_file_path, "w") as f:
-            f.write(code)
-
-        # Run in subprocess with chosen venv
-        result = subprocess.run(
-            [python_exec, code_file_path],
-            capture_output=True,
-            text=True
-        )
-
-        if result.returncode == 0:
-            success_message = f"✅ Code executed successfully:\n{result.stdout}"
-            log_to_file(success_message)
-            return {"code": 1, "output": result.stdout}
-        else:
-            error_message = f"❌ Execution error:\n{result.stderr}"
-            log_to_file(error_message)
-            return {"code": 0, "output": error_message}
+        execute_code()
+        return {"code": 1, "output": "✅ Code executed successfully after installing libraries."}
 
     except Exception as e:
-        error_details = f"❌ Error during code execution:\n{traceback.format_exc()}"
-        log_to_file(error_details)
-        return {"code": 0, "output": error_details}
+        return {"code": 0, "output": f"❌ Error during code execution:\n{traceback.format_exc()}" }
